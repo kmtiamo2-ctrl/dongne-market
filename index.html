@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<script src="config.js"></script>
+<title>우리동네 상권분석</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Gowun+Batang:wght@700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: PC는 3단(조건·목록 | 지도/탭 내용 | 상권 인사이트), 모바일은 하단 바로 한 단씩 전환.
+   배경 지도를 불러올 수 없어 가게를 점으로 찍고, 점이 모인 모양으로 길과 상권을 읽는다. */
+:root {
+  --bg: #eef1ee;
+  --panel: #fbfcfb;
+  --panel2: #f2f5f2;
+  --map-bg: #e9ede8;
+  --fg: #1a231f;
+  --muted: #5d6b65;
+  --line: #d6ddd8;
+  --accent: #1f6b4f;
+  --accent-ink: #ffffff;
+  --accent-soft: #e1efe8;
+  --gold: #c08a1a;
+  --warn: #b4452c;
+  --halo: #f5f7f5;
+  --road: #ffffff; --road-major: #f7e9c3; --road-hw: #f3d9a4; --road-casing: #d8ded9; --road-label: #6a736e;
+  --c-I2: #e0653a; --c-G2: #3579c9; --c-S2: #8560c4; --c-P1: #16988c; --c-R1: #d2457c;
+  --c-Q1: #3f9d4f; --c-L1: #cf9a12; --c-M1: #6f7f8c; --c-N1: #9a6a3a; --c-I1: #1ea3c8;
+  --font: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --display: "Gowun Batang", "Noto Serif KR", serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --radius: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1412; --panel: #171e1b; --panel2: #1e2622; --map-bg: #0c100e; --fg: #e6ece8; --muted: #93a39b;
+    --line: #2a342f; --accent: #5fc496; --accent-ink: #0f1412; --accent-soft: #1d3a2d; --gold: #e2b14a; --warn: #ef8a6a; --halo: #0c100e;
+    --road: #222b26; --road-major: #3a3b2c; --road-hw: #4a4530; --road-casing: #0c100e; --road-label: #8e9a93;
+    --c-I2: #ff8457; --c-G2: #62a6f0; --c-S2: #b08ae6; --c-P1: #2fcabd; --c-R1: #f06ca2;
+    --c-Q1: #62c878; --c-L1: #f0bd3c; --c-M1: #93a4b1; --c-N1: #c89360; --c-I1: #45c3e6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1412; --panel: #171e1b; --panel2: #1e2622; --map-bg: #0c100e; --fg: #e6ece8; --muted: #93a39b;
+  --line: #2a342f; --accent: #5fc496; --accent-ink: #0f1412; --accent-soft: #1d3a2d; --gold: #e2b14a; --warn: #ef8a6a; --halo: #0c100e;
+  --road: #222b26; --road-major: #3a3b2c; --road-hw: #4a4530; --road-casing: #0c100e; --road-label: #8e9a93;
+  --c-I2: #ff8457; --c-G2: #62a6f0; --c-S2: #b08ae6; --c-P1: #2fcabd; --c-R1: #f06ca2;
+  --c-Q1: #62c878; --c-L1: #f0bd3c; --c-M1: #93a4b1; --c-N1: #c89360; --c-I1: #45c3e6;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.45;
+  padding-block: 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow: hidden;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+[hidden] { display: none !important; }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a { color: var(--accent); }
+h1, h2, h3, h4 { margin: 0; text-wrap: balance; }
+p { margin: 0; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+
+#app { height: 100%; display: flex; flex-direction: column; gap: 8px; padding-block: 8px; }
+
+/* ---------- 상단 ---------- */
+.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.brand .mark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 15px; flex: none; }
+.brand h1 { font-family: var(--display); font-size: 18px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+.brand small { display: block; font-size: 11px; color: var(--muted); font-family: var(--font); font-weight: 400; }
+nav.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
+nav.tabs::-webkit-scrollbar { display: none; }
+nav.tabs button { border: 0; background: transparent; padding: 8px 11px; border-radius: 6px; white-space: nowrap; color: var(--muted); font-weight: 500; }
+nav.tabs button[aria-selected="true"] { background: var(--panel); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
+nav.tabs button:hover { color: var(--fg); }
+nav.tabs button .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); margin-left: 5px; vertical-align: middle; opacity: .6; }
+.top .meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+.btn:hover { background: var(--panel2); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.sm { padding: 4px 8px; font-size: 12px; }
+.btn.icon { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; }
+
+/* ---------- 본문 3단 ---------- */
+.layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr) 320px; gap: 8px; }
+.pane { min-width: 0; min-height: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; }
+.pane.scroll { overflow-y: auto; }
+.left { padding: 12px; gap: 14px; overflow-y: auto; }
+.right { padding: 14px; gap: 14px; overflow-y: auto; }
+.center { position: relative; overflow: hidden; }
+section.block { display: grid; gap: 8px; min-width: 0; }
+section.block > h3 { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+section.block > h3 button { border: 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: 500; letter-spacing: 0; padding: 2px 4px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+select, input[type="search"], input[type="text"], textarea { width: 100%; min-width: 0; height: 34px; padding: 0 9px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; }
+textarea { height: auto; padding: 8px 9px; resize: vertical; line-height: 1.4; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { border: 1px solid var(--line); background: var(--panel2); border-radius: 999px; padding: 4px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
+.chip b { font-family: var(--mono); font-weight: 400; font-size: 11px; color: var(--muted); }
+.cats { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.cat { display: flex; align-items: center; gap: 7px; padding: 6px 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; text-align: left; min-width: 0; }
+.cat i, .sw { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+.cat span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.cat b { font-family: var(--mono); font-weight: 400; font-size: 11px; color: var(--muted); }
+.cat[aria-pressed="false"] { opacity: .45; }
+.cat[aria-pressed="false"] i { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--muted); }
+
+.listhead { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.listhead select { width: auto; height: 28px; font-size: 12px; }
+.list { display: grid; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.item { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; padding: 8px 10px; border: 0; background: transparent; text-align: left; min-width: 0; }
+.item + .item { border-top: 1px solid var(--line); }
+.item:hover, .item[aria-current="true"] { background: var(--panel2); }
+.item strong { grid-column: 1; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.item small { grid-column: 1; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .star { grid-column: 2; grid-row: 1 / span 3; align-self: center; border: 0; background: transparent; font-size: 16px; color: var(--muted); padding: 2px 4px; border-radius: 4px; }
+.item .star[aria-pressed="true"] { color: var(--gold); }
+.more { border: 0; background: var(--panel2); padding: 8px; font-size: 12px; color: var(--accent); }
+
+/* ---------- 지도 ---------- */
+.view { position: absolute; inset: 0; display: none; }
+.view.active { display: block; }
+.view.doc { overflow-y: auto; padding: 18px 20px 28px; }
+.stage { position: absolute; inset: 0; background: var(--map-bg); }
+#kmap { position: absolute; inset: 0; }
+canvas#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; z-index: 1; }
+.maptop { z-index: 2; position: absolute; top: 10px; left: 10px; right: 10px; display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; pointer-events: none; }
+.maptop > * { pointer-events: auto; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12.5px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--fg); font-weight: 500; }
+.seg button + button { border-left: 1px solid var(--line); }
+.radiusbox { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; }
+.radiusbox select { width: auto; height: 26px; font-size: 12px; padding: 0 4px; }
+.pill { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; font-size: 12.5px; white-space: nowrap; }
+.pill b { font-family: var(--mono); font-weight: 500; }
+.zoom { z-index: 2; position: absolute; right: 10px; top: 54px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.zoom button { width: 34px; height: 34px; border: 0; background: transparent; font-size: 18px; line-height: 1; }
+.zoom button + button { border-top: 1px solid var(--line); }
+.zoom button:hover { background: var(--panel2); }
+.zoom .txt { font-size: 11px; font-weight: 500; }
+.mapbottom { z-index: 2; position: absolute; left: 10px; bottom: 10px; right: 10px; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; pointer-events: none; }
+.mapbottom > * { pointer-events: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.scalebar { font-family: var(--mono); font-size: 11px; color: var(--muted); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; }
+.scalebar i { display: block; height: 3px; border: 1px solid var(--muted); border-top: 0; margin-top: 2px; }
+.tip { position: absolute; pointer-events: none; z-index: 4; background: var(--fg); color: var(--bg); padding: 3px 8px; border-radius: 4px; font-size: 12px; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 16px; z-index: 4; background: var(--map-bg); }
+.loading b { display: block; color: var(--fg); font-size: 15px; margin-bottom: 4px; }
+
+/* 가게 상세 카드 */
+.card { position: absolute; left: 10px; bottom: 10px; z-index: 5; width: min(360px, calc(100% - 20px)); max-height: calc(100% - 20px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px 12px; display: grid; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.card .cat { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.card h2 { font-size: 16px; font-weight: 700; padding-right: 60px; overflow-wrap: anywhere; }
+.card .addr { font-size: 13px; overflow-wrap: anywhere; display: grid; gap: 2px; }
+.card .links { display: flex; flex-wrap: wrap; gap: 6px; }
+.card .links a { border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font-size: 12.5px; text-decoration: none; background: var(--panel2); color: var(--fg); font-weight: 500; }
+.card .links a:hover { border-color: var(--accent); }
+.card .x { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: 0; background: transparent; font-size: 18px; color: var(--muted); border-radius: 4px; }
+.card .fav { position: absolute; top: 8px; right: 40px; width: 28px; height: 28px; border: 0; background: transparent; font-size: 18px; color: var(--muted); border-radius: 4px; }
+.card .fav[aria-pressed="true"] { color: var(--gold); }
+.card .near { font-size: 12.5px; background: var(--panel2); border-radius: 6px; padding: 7px 9px; display: grid; gap: 2px; }
+.card .memo { display: grid; gap: 5px; }
+.card .memo .row { display: flex; gap: 6px; align-items: center; }
+.card .memo select { height: 30px; font-size: 12px; width: auto; }
+.card textarea { min-height: 54px; font-size: 13px; }
+
+/* ---------- 인사이트(우측) ---------- */
+.kpi { display: grid; gap: 6px; }
+.kpi .big { background: var(--panel2); border-radius: 8px; padding: 12px 14px; display: grid; gap: 2px; }
+.kpi .big .v { font-family: var(--mono); font-size: 30px; font-weight: 500; line-height: 1.1; color: var(--accent); }
+.kpi .big .v small { font-size: 14px; font-family: var(--font); color: var(--fg); font-weight: 400; margin-left: 2px; }
+.kpi .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.kpi .pair div { background: var(--panel2); border-radius: 8px; padding: 9px 12px; }
+.kpi .pair .v { font-family: var(--mono); font-size: 18px; font-weight: 500; }
+.kpi .pair .v small { font-family: var(--font); font-size: 12px; font-weight: 400; margin-left: 1px; }
+.kpi .l { font-size: 11.5px; color: var(--muted); }
+.donutwrap { display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center; }
+.donutwrap svg { width: 120px; height: 120px; max-width: 100%; }
+.donutwrap ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+.donutwrap li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.donutwrap li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donutwrap li b { font-family: var(--mono); font-weight: 400; color: var(--muted); }
+.bars { display: grid; gap: 5px; }
+.bar { display: grid; grid-template-columns: 18px 1fr auto; gap: 7px; align-items: center; font-size: 12.5px; }
+.bar .rk { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.bar .nm { min-width: 0; display: grid; gap: 2px; }
+.bar .nm span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar .nm i { display: block; height: 5px; border-radius: 3px; background: var(--accent); opacity: .85; }
+.bar .nm i.alt { background: var(--muted); }
+.bar .ct { font-family: var(--mono); font-size: 12px; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.callout { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; }
+.callout b { display: block; margin-bottom: 2px; }
+.tagline { font-family: var(--display); font-size: 13px; color: var(--muted); }
+
+/* ---------- 문서형 탭 ---------- */
+.doc .inner { max-width: 960px; display: grid; gap: 20px; }
+.doc header.dh { display: grid; gap: 4px; }
+.doc header.dh h2 { font-family: var(--display); font-size: 24px; }
+.doc header.dh .sub { color: var(--muted); font-size: 13px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.box { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; min-width: 0; align-content: start; }
+.box > h3 { font-size: 14px; font-weight: 700; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.box > h3 small { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+table.t { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.t th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11.5px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+table.t td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.t td.n, table.t th.n { text-align: right; font-family: var(--mono); white-space: nowrap; }
+table.t tr:last-child td { border-bottom: 0; }
+.twrap { overflow-x: auto; }
+.lq { display: inline-block; min-width: 42px; text-align: center; padding: 1px 6px; border-radius: 999px; font-family: var(--mono); font-size: 11.5px; }
+.lq.hi { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.lq.lo { background: var(--accent-soft); color: var(--accent); }
+.stack { display: flex; height: 14px; border-radius: 4px; overflow: hidden; }
+.stack i { display: block; height: 100%; }
+.empty { border: 1px dashed var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 8px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.empty b { color: var(--fg); }
+.empty ol { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+.ctrlrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ctrlrow select { width: auto; min-width: 160px; }
+.favitem { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.favitem:last-child { border-bottom: 0; }
+.favitem .nm { font-weight: 600; font-size: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.favitem .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.favitem textarea { grid-column: 1 / -1; min-height: 44px; font-size: 13px; }
+.favitem .ops { display: flex; gap: 6px; align-items: flex-start; }
+.favitem .ops select { height: 28px; font-size: 12px; width: auto; }
+.modal { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.4); display: grid; place-items: center; padding: 16px; }
+.modal .win { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; max-width: 620px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 20px 22px; display: grid; gap: 12px; font-size: 13.5px; line-height: 1.55; }
+.modal .win h2 { font-family: var(--display); font-size: 20px; }
+.modal .win h4 { font-size: 13px; margin-top: 4px; }
+.modal .win ul { margin: 0; padding-left: 18px; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 60; }
+
+/* ---------- 모바일 ---------- */
+.mobilebar { display: none; }
+@media (max-width: 900px) {
+  #app { gap: 6px; padding-block: 6px; }
+  .brand h1 { font-size: 16px; }
+  .brand small { display: none; }
+  .top .meta { display: none; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .layout .pane { display: none; }
+  .layout[data-mview="left"] .left, .layout[data-mview="center"] .center, .layout[data-mview="right"] .right { display: flex; }
+  .mobilebar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .mobilebar button { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 8px 4px; font-size: 12.5px; color: var(--muted); }
+  .mobilebar button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 500; }
+  .card { left: 6px; right: 6px; bottom: 6px; width: auto; max-height: 60%; }
+  .view.doc { padding: 14px 12px 24px; }
+  .donutwrap { grid-template-columns: 100px 1fr; }
+  .zoom { top: auto; bottom: 60px; }
+  .mapbottom { right: 54px; }
+  .legend { font-size: 10px; gap: 2px 7px; padding: 4px 6px; max-width: 70%; }
+  .maptop .seg button { padding: 5px 8px; font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="top">
+    <div class="brand">
+      <div class="mark">동</div>
+      <h1>우리동네 상권분석<small>전남·광주 상가 175,276곳 · 2026.06</small></h1>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="메뉴">
+      <button data-tab="map" aria-selected="true">상권 지도</button>
+      <button data-tab="analysis">상권 분석</button>
+      <button data-tab="startup">창업 아이템</button>
+      <button data-tab="estate">부동산<span class="dot" title="자료 대기"></span></button>
+      <button data-tab="people">인구·유동<span class="dot" title="자료 대기"></span></button>
+      <button data-tab="license">개·폐업<span class="dot" title="자료 대기"></span></button>
+      <button data-tab="fav">관심 상가 <b class="num" id="favCountTab">0</b></button>
+    </nav>
+    <div class="meta">
+      <span id="engineNote">카카오맵</span>
+      <button class="btn sm" id="guideBtn">안내</button>
+    </div>
+  </header>
+
+  <div class="layout" id="layout" data-mview="center">
+    <!-- 좌: 조건·목록 -->
+    <aside class="pane left" id="left">
+      <section class="block">
+        <h3>검색</h3>
+        <input type="search" id="q" placeholder="상호·업종·주소 검색" autocomplete="off">
+      </section>
+      <section class="block">
+        <h3>지역 <button id="dongAll">전체 동</button></h3>
+        <div class="row2">
+          <select id="selSgg" aria-label="시군구"></select>
+          <select id="selDong" aria-label="법정동 추가"></select>
+        </div>
+        <div class="chips" id="dongChips"></div>
+      </section>
+      <section class="block">
+        <h3>업종 <button id="catAll">모두 켜기</button></h3>
+        <div class="cats" id="cats"></div>
+        <select id="selCatS" aria-label="세부 업종"></select>
+      </section>
+      <section class="block">
+        <div class="listhead">
+          <h3 style="font-size:12px;letter-spacing:.06em;color:var(--muted)">검색된 상가 <b class="num" id="listCount">0</b></h3>
+          <select id="sort" aria-label="정렬">
+            <option value="dist">지도 중심 가까운 순</option>
+            <option value="name">이름순</option>
+            <option value="cat">업종순</option>
+          </select>
+        </div>
+        <div class="list" id="list"></div>
+      </section>
+    </aside>
+
+    <!-- 중: 지도 / 탭 내용 -->
+    <main class="pane center" id="center">
+      <div class="view active" id="view-map">
+        <div class="stage" id="stage">
+          <div id="kmap"></div>
+          <canvas id="cv" aria-label="상가 분포 지도"></canvas>
+          <div class="maptop">
+            <div class="seg" id="scopeSeg">
+              <button data-scope="all" aria-pressed="true">지역 전체</button>
+              <button data-scope="view" aria-pressed="false">현재 화면</button>
+              <button data-scope="radius" aria-pressed="false">반경 분석</button>
+            </div>
+            <div class="radiusbox" id="radiusBox" hidden>
+              <span>반경</span>
+              <select id="radiusSel"><option value="300">300m</option><option value="500" selected>500m</option><option value="1000">1km</option></select>
+              <button class="btn sm" id="radiusCenter">지도 중심으로</button>
+            </div>
+            <div class="seg">
+              <button id="toggleLabels" aria-pressed="true">상호 표시</button>
+              <button id="toggleCtx" aria-pressed="true">주변 흐리게</button>
+            </div>
+            <div class="pill" id="pill"></div>
+          </div>
+          <div class="zoom">
+            <button id="zin" aria-label="확대">+</button>
+            <button id="zout" aria-label="축소">−</button>
+            <button id="zfit" class="txt" aria-label="검색된 상가 전체 보기">맞춤</button>
+          </div>
+          <div class="mapbottom">
+            <div class="legend" id="legend"></div>
+            <div class="seg" id="mapTypeSeg"><button data-type="road" aria-pressed="true">일반</button><button data-type="sky" aria-pressed="false">위성</button></div>
+          </div>
+          <div class="tip" id="tip" hidden></div>
+          <div class="card" id="card" hidden></div>
+          <div class="loading" id="loading"><div><b>지도와 상가 자료를 불러오는 중</b>잠시만 기다려 주세요.</div></div>
+        </div>
+      </div>
+      <div class="view doc" id="view-analysis"><div class="inner" id="analysisInner"></div></div>
+      <div class="view doc" id="view-startup"><div class="inner" id="startupInner"></div></div>
+      <div class="view doc" id="view-estate"><div class="inner" id="estateInner"></div></div>
+      <div class="view doc" id="view-people"><div class="inner" id="peopleInner"></div></div>
+      <div class="view doc" id="view-license"><div class="inner" id="licenseInner"></div></div>
+      <div class="view doc" id="view-fav"><div class="inner" id="favInner"></div></div>
+    </main>
+
+    <!-- 우: 상권 한눈에 -->
+    <aside class="pane right" id="right">
+      <div>
+        <div class="eyebrow">Neighborhood insight</div>
+        <h2 style="font-family:var(--display);font-size:19px;margin-top:2px">상권 한눈에</h2>
+        <div class="small muted" id="scopeLabel"></div>
+      </div>
+      <div class="kpi">
+        <div class="big"><div class="l">등록 상가</div><div class="v"><span id="kN">0</span><small>곳</small></div><div class="l">선택한 조건에 해당하는 상가 수</div></div>
+        <div class="pair">
+          <div><div class="l">세부 업종</div><div class="v"><span id="kS">0</span><small>개</small></div></div>
+          <div><div class="l">관심 상가</div><div class="v"><span id="kF">0</span><small>곳</small></div></div>
+        </div>
+      </div>
+      <section class="block">
+        <h3>업종 구성 <span class="num" id="kL"></span></h3>
+        <div class="donutwrap"><svg id="donut" viewBox="0 0 120 120" role="img" aria-label="업종 구성"></svg><ul id="donutList"></ul></div>
+      </section>
+      <section class="block">
+        <h3>많이 보이는 업종 <span class="muted" style="font-weight:400;letter-spacing:0">상가 수 기준</span></h3>
+        <div class="bars" id="topBars"></div>
+      </section>
+      <section class="block">
+        <h3>이 지역에 유난히 많은 업종 <span class="muted" style="font-weight:400;letter-spacing:0" id="lqBase"></span></h3>
+        <div class="bars" id="lqBars"></div>
+        <p class="note">특화 지수: 이 지역 비중 ÷ 시군구 전체 비중. 1.0이면 평균, 2.0이면 평균의 두 배.</p>
+      </section>
+      <div class="callout"><b>상권을 읽는 첫걸음</b>상가 수는 매출·유동인구·수요를 뜻하지 않아요. 업종이 모인 곳을 보고, 로드뷰와 현장 메모로 판단을 더하세요.</div>
+      <p class="tagline">작은 발견이, 더 나은 판단으로.</p>
+    </aside>
+  </div>
+
+  <nav class="mobilebar" id="mobilebar" aria-label="화면 전환">
+    <button data-mview="left" aria-pressed="false">조건·목록</button>
+    <button data-mview="center" aria-pressed="true" id="mvCenter">지도</button>
+    <button data-mview="right" aria-pressed="false">인사이트</button>
+  </nav>
+</div>
+
+<div class="modal" id="guide" hidden>
+  <div class="win">
+    <h2>사용 안내</h2>
+    <p>소상공인시장진흥공단 상가(상권)정보(2026년 6월, 전남·광주 175,276곳)로 만든 조회·분석 도구입니다. 데이터는 이 페이지와 함께 올라가 있어 별도 서버나 비용 없이 동작합니다.</p>
+    <h4>지도</h4>
+    <ul>
+      <li>카카오맵 위에 가게를 업종 색 점으로 표시합니다. 위성 보기로 전환할 수 있습니다.</li>
+      <li>점을 누르면 가게 정보가 뜨고, 로드뷰를 바로 볼 수 있으며 카카오맵·네이버지도로 이어집니다.</li>
+      
+      <li>반경 분석: 지도를 누른 자리를 중심으로 300m·500m·1km 안의 업종 구성을 봅니다.</li>
+    </ul>
+    <h4>숫자 해석</h4>
+    <ul>
+      <li>상가 수는 등록 기준이며 실제 영업 여부·매출·유동인구를 뜻하지 않습니다.</li>
+      <li>특화 지수(LQ) = 이 지역 비중 ÷ 시군구 전체 비중. 1보다 크면 평균보다 많이 모인 업종입니다.</li>
+      <li>창업 아이템 탭의 '비어 있는 업종'은 통계적 공백일 뿐, 수요가 있다는 뜻은 아닙니다. 현장 확인이 필요합니다.</li>
+    </ul>
+    <h4>관심 상가·메모</h4>
+    <ul>
+      <li>이 브라우저(기기)에만 저장됩니다. 다른 기기로 옮기려면 관심 상가 탭에서 내보내기 텍스트를 복사해 붙여 넣으세요.</li>
+    </ul>
+    <h4>앞으로 붙일 자료</h4>
+    <ul>
+      <li>개·폐업: 지방행정인허가데이터(localdata.go.kr) 업종별 CSV</li>
+      <li>인구·유동: 행정안전부 주민등록 인구(동별 연령), SGIS 격자 인구, 유동인구 자료</li>
+      <li>부동산: 국토교통부 실거래가(rt.molit.go.kr) 아파트·상업업무용, 한국부동산원 상가 임대동향</li>
+    </ul>
+    <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="guideClose">닫기</button></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => Number(n).toLocaleString('ko-KR');
+  const pct = (a, b) => b ? (100 * a / b).toFixed(1) + '%' : '0%';
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const CFG = { defaultSgg: '12270', defaultDongs: ['진월동'], maxLabels: 400 };
+  const TAGS = ['후보', '방문함', '영업 확인', '폐업 의심', '보류'];
+  const CATL_ORDER = ['I2', 'G2', 'S2', 'P1', 'R1', 'Q1', 'L1', 'M1', 'N1', 'I1'];
+
+  let IDX = null;
+  const CACHE = {};
+  const state = {
+    tab: 'map', sgg: CFG.defaultSgg, dongs: new Set(CFG.defaultDongs), catL: new Set(CATL_ORDER), catS: '', q: '',
+    scope: 'all', radius: { lon: 0, lat: 0, r: 500, set: false }, sort: 'dist', labels: true, ctx: true, sel: null, listLimit: 120,
+    cmpA: '', cmpB: '', startupCat: '', startupLife: true, favTag: 'all',
+  };
+  let ROWS = [];        // 현재 시군구 전체
+  let AREA = [];        // 동 조건
+  let FILTERED = [];    // + 업종·검색
+  let SCOPED = [];      // + 화면/반경
+  let FAV = {};
+  try { FAV = JSON.parse(localStorage.getItem('dongne.fav.v1') || '{}') || {}; } catch (e) { FAV = {}; }
+  function saveFav() { try { localStorage.setItem('dongne.fav.v1', JSON.stringify(FAV)); } catch (e) { } $('favCountTab').textContent = fmt(Object.keys(FAV).length); }
+
+  /* ---------- 데이터 ---------- */
+  async function fetchBin(url) {
+    const res = await fetch(url); if (!res.ok) throw new Error(url + ' ' + res.status);
+    const buf = await res.arrayBuffer(); let u8 = new Uint8Array(buf);
+    if (u8[0] === 0x48 && u8[1] === 0x34 && u8[2] === 0x73 && u8[3] === 0x49) { // base64 'H4sI' = gzip
+      const bin = atob(new TextDecoder().decode(u8).trim()); u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    }
+    if (u8[0] === 0x1f && u8[1] === 0x8b) {
+      const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
+      return new Response(stream).json();
+    }
+    return JSON.parse(new TextDecoder().decode(u8));
+  }
+  async function loadSgg(code) {
+    if (CACHE[code]) return CACHE[code];
+    $('loading').hidden = false;
+    const arr = await fetchBin(`data/sgg_${code}.json`);
+    const rows = arr.map((r) => {
+      const sc = r[3], sm = IDX.catS[sc]?.M || '', sl = IDX.catM[sm]?.L || sc.slice(0, 2);
+      return { id: r[0], name: r[1], branch: r[2], sc, sm, sl, hd: r[4], bd: r[5], road: r[6], jibun: r[7], bldg: r[8], floor: r[9], lon: r[10], lat: r[11],
+        q: (r[1] + ' ' + r[2] + ' ' + (IDX.catS[sc]?.name || '') + ' ' + r[6] + ' ' + r[7] + ' ' + r[8]).toLowerCase() };
+    });
+    CACHE[code] = rows; $('loading').hidden = true; return rows;
+  }
+  const catSName = (sc) => IDX.catS[sc]?.name || sc;
+  const catLName = (sl) => IDX.catL[sl] || sl;
+  const colorOf = (sl) => getComputedStyle(document.documentElement).getPropertyValue('--c-' + sl).trim() || '#888';
+  let COLORS = {};
+  function readColors() { COLORS = {}; for (const k of CATL_ORDER) COLORS[k] = colorOf(k); const cs = getComputedStyle(document.documentElement); for (const k of ['fg', 'muted', 'halo', 'accent', 'gold', 'line', 'road', 'road-major', 'road-hw', 'road-casing', 'road-label']) COLORS[k] = cs.getPropertyValue('--' + k).trim(); COLORS.map = cs.getPropertyValue('--map-bg').trim(); }
+
+  /* ---------- 필터 ---------- */
+  function distM(aLon, aLat, bLon, bLat) { const kx = 111320 * Math.cos(aLat * Math.PI / 180), ky = 111320; const dx = (aLon - bLon) * kx, dy = (aLat - bLat) * ky; return Math.sqrt(dx * dx + dy * dy); }
+  function computeFilters() {
+    AREA = state.dongs.size ? ROWS.filter((r) => state.dongs.has(r.bd)) : ROWS;
+    const q = state.q.trim().toLowerCase();
+    FILTERED = AREA.filter((r) => state.catL.has(r.sl) && (!state.catS || r.sc === state.catS) && (!q || r.q.includes(q)));
+    computeScope();
+  }
+  function computeScope() {
+    if (state.scope === 'view' && map.ready) { const b = map.getBounds(); SCOPED = FILTERED.filter((r) => r.lon >= b.w && r.lon <= b.e && r.lat >= b.s && r.lat <= b.n); }
+    else if (state.scope === 'radius' && state.radius.set) { const R = state.radius; SCOPED = FILTERED.filter((r) => distM(R.lon, R.lat, r.lon, r.lat) <= R.r); }
+    else SCOPED = FILTERED;
+  }
+  function stats(rows) {
+    const cS = new Map(), cL = new Map(); let fav = 0;
+    for (const r of rows) { cS.set(r.sc, (cS.get(r.sc) || 0) + 1); cL.set(r.sl, (cL.get(r.sl) || 0) + 1); if (FAV[r.id]) fav++; }
+    return { n: rows.length, cS, cL, fav };
+  }
+  function lq(rowsArea, rowsBase, minCount) {
+    const a = stats(rowsArea), b = stats(rowsBase); const out = [];
+    for (const [sc, n] of a.cS) { if (n < (minCount || 3)) continue; const bn = b.cS.get(sc) || 0; if (!bn) continue; const v = (n / a.n) / (bn / b.n); out.push({ sc, n, share: n / a.n, baseShare: bn / b.n, lq: v, bn }); }
+    return out;
+  }
+
+  /* ---------- 지도(카카오맵 + 캔버스 오버레이) ---------- */
+  const cv = $('cv'), ctx = cv.getContext('2d'), stage = $('stage');
+  let KMAP = null, KPROJ = null;
+  const map = {
+    ready: false, z: 15, W: 0, H: 0, dpr: 1, moveCbs: [],
+    get lon() { return KMAP ? KMAP.getCenter().getLng() : 126.9; },
+    get lat() { return KMAP ? KMAP.getCenter().getLat() : 35.13; },
+    levelOf(z) { return Math.max(1, Math.min(14, Math.round(20 - z))); },
+    syncZ() { this.z = 20 - KMAP.getLevel(); },
+    toPx(lon, lat) { const p = KPROJ.containerPointFromCoords(new kakao.maps.LatLng(lat, lon)); return [p.x, p.y]; },
+    fromPx(x, y) { const c = KPROJ.coordsFromContainerPoint(new kakao.maps.Point(x, y)); return { lon: c.getLng(), lat: c.getLat() }; },
+    getBounds() { const b = KMAP.getBounds(); const sw = b.getSouthWest(), ne = b.getNorthEast(); return { w: sw.getLng(), s: sw.getLat(), e: ne.getLng(), n: ne.getLat() }; },
+    getCenter() { return { lon: this.lon, lat: this.lat }; },
+    setView(lon, lat, z) { if (z != null) KMAP.setLevel(this.levelOf(z)); KMAP.setCenter(new kakao.maps.LatLng(lat, lon)); this.syncZ(); this.moved(); },
+    fitBounds(b, pad) { if (!(b.e > b.w) || !(b.n > b.s)) { this.setView((b.w + b.e) / 2, (b.s + b.n) / 2, 17); return; } KMAP.setBounds(new kakao.maps.LatLngBounds(new kakao.maps.LatLng(b.s, b.w), new kakao.maps.LatLng(b.n, b.e)), pad || 40); this.syncZ(); this.moved(); },
+    zoomBy(d) { KMAP.setLevel(KMAP.getLevel() - Math.round(d), { animate: true }); },
+    metersPerPx() { const c = KMAP.getCenter(); const p0 = KPROJ.containerPointFromCoords(c); const p1 = KPROJ.containerPointFromCoords(new kakao.maps.LatLng(c.getLat(), c.getLng() + 0.001)); const px = Math.abs(p1.x - p0.x) || 1; return 111320 * Math.cos(c.getLat() * Math.PI / 180) * 0.001 / px; },
+    moved() { needDraw = true; clearTimeout(this._t); this._t = setTimeout(() => this.moveCbs.forEach((f) => f()), 160); },
+    onMove(f) { this.moveCbs.push(f); },
+  };
+  let needDraw = false;
+  function resize() { const r = stage.getBoundingClientRect(); map.W = Math.max(1, r.width); map.H = Math.max(1, r.height); map.dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = Math.round(map.W * map.dpr); cv.height = Math.round(map.H * map.dpr); if (KMAP) KMAP.relayout(); needDraw = true; }
+  new ResizeObserver(resize).observe(stage);
+
+  function loadKakao() {
+    return new Promise((resolve, reject) => {
+      const key = (window.APP_CONFIG || {}).kakaoKey; if (!key) return reject(new Error('config.js에 kakaoKey가 없습니다'));
+      const s = document.createElement('script'); s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&autoload=false`;
+      const t = setTimeout(() => reject(new Error('카카오맵 SDK 응답 없음')), 10000);
+      s.onload = () => { clearTimeout(t); if (!window.kakao || !kakao.maps) return reject(new Error('카카오맵 SDK 로드 실패')); kakao.maps.load(() => resolve()); };
+      s.onerror = () => { clearTimeout(t); reject(new Error(`카카오맵을 불러오지 못했습니다. 카카오 개발자 > 내 앱 > 플랫폼 > Web 에 이 주소를 등록했는지 확인하세요: ${location.origin}`)); };
+      document.head.appendChild(s);
+    });
+  }
+  function initKakao() {
+    KMAP = new kakao.maps.Map($('kmap'), { center: new kakao.maps.LatLng(35.13, 126.9), level: 5 }); KMAP.setMaxLevel(12); KPROJ = KMAP.getProjection(); map.syncZ();
+    kakao.maps.event.addListener(KMAP, 'center_changed', () => { needDraw = true; });
+    kakao.maps.event.addListener(KMAP, 'zoom_changed', () => { map.syncZ(); needDraw = true; });
+    kakao.maps.event.addListener(KMAP, 'idle', () => { map.syncZ(); map.moved(); });
+    kakao.maps.event.addListener(KMAP, 'click', (e) => { const [x, y] = map.toPx(e.latLng.getLng(), e.latLng.getLat()); onTap(x, y); });
+    kakao.maps.event.addListener(KMAP, 'mousemove', (e) => { const [x, y] = map.toPx(e.latLng.getLng(), e.latLng.getLat()); const p = hit(x, y); const tip = $('tip'); if (p) { tip.hidden = false; tip.textContent = p.name + ' · ' + catSName(p.sc); tip.style.left = Math.min(map.W - 270, x + 12) + 'px'; tip.style.top = (y + 14) + 'px'; } else tip.hidden = true; });
+    $('mapTypeSeg').querySelectorAll('button').forEach((b) => b.onclick = () => { $('mapTypeSeg').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b)); KMAP.setMapTypeId(b.dataset.type === 'sky' ? kakao.maps.MapTypeId.HYBRID : kakao.maps.MapTypeId.ROADMAP); });
+  }
+
+  function draw() {
+    needDraw = false; if (!map.ready || !KPROJ) return;
+    const W = map.W, H = map.H; ctx.setTransform(map.dpr, 0, 0, map.dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const z = map.z; const b = map.getBounds();
+    const r = z < 12 ? 1.5 : z < 14 ? 2.2 : z < 16 ? 3 : z < 17.5 ? 4.5 : 6;
+    const filteredSet = new Set(FILTERED);
+    if (state.ctx) {
+      ctx.globalAlpha = 0.5; ctx.fillStyle = COLORS.muted;
+      for (const p of ROWS) { if (filteredSet.has(p)) continue; if (p.lon < b.w || p.lon > b.e || p.lat < b.s || p.lat > b.n) continue; const [x, y] = map.toPx(p.lon, p.lat); ctx.beginPath(); ctx.arc(x, y, Math.max(1.2, r * 0.6), 0, 6.283); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+    if (state.scope === 'radius' && state.radius.set) { const [x, y] = map.toPx(state.radius.lon, state.radius.lat); const pr = state.radius.r / map.metersPerPx(); ctx.beginPath(); ctx.arc(x, y, pr, 0, 6.283); ctx.fillStyle = COLORS.accent; ctx.globalAlpha = .12; ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.strokeStyle = COLORS.accent; ctx.stroke(); ctx.beginPath(); ctx.arc(x, y, 4, 0, 6.283); ctx.fill(); }
+    const visible = []; const inScope = state.scope === 'all' ? null : new Set(SCOPED);
+    for (const p of FILTERED) { if (p.lon < b.w || p.lon > b.e || p.lat < b.s || p.lat > b.n) continue; visible.push(p); }
+    for (const p of visible) { const [x, y] = map.toPx(p.lon, p.lat); p._x = x; p._y = y; const dim = inScope && !inScope.has(p); ctx.globalAlpha = dim ? .3 : .95; ctx.fillStyle = COLORS[p.sl] || COLORS.muted; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = '#ffffff'; ctx.stroke(); if (FAV[p.id] && r >= 2.6) { ctx.lineWidth = 2; ctx.strokeStyle = COLORS.gold; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, 6.283); ctx.stroke(); } }
+    ctx.globalAlpha = 1;
+    if (state.labels && z >= 16.5 && visible.length <= CFG.maxLabels) {
+      ctx.font = '600 11px ' + getComputedStyle(document.body).fontFamily; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      const used = new Set(); const cw = 96, ch = 14;
+      for (const p of visible) { const x = p._x, y = p._y; const k = Math.floor(x / cw) + ':' + Math.floor(y / ch); if (used.has(k)) continue; used.add(k); const t = p.name.length > 14 ? p.name.slice(0, 13) + '…' : p.name; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.strokeText(t, x + r + 3, y); ctx.fillStyle = '#1a231f'; ctx.fillText(t, x + r + 3, y); }
+    }
+    if (state.sel) { const [x, y] = map.toPx(state.sel.lon, state.sel.lat); ctx.lineWidth = 3; ctx.strokeStyle = COLORS.accent; ctx.beginPath(); ctx.arc(x, y, r + 5, 0, 6.283); ctx.stroke(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r + 7, 0, 6.283); ctx.stroke(); }
+    $('pill').innerHTML = `${esc(areaLabel())} · <b>${fmt(SCOPED.length)}</b>곳`;
+  }
+  function loop() { if (needDraw) draw(); requestAnimationFrame(loop); }
+
+  function hit(px, py) { const R = 10; let best = null, bd = R * R; const b = map.getBounds(); const list = FILTERED.length ? FILTERED : ROWS; for (const p of list) { if (p.lon < b.w || p.lon > b.e || p.lat < b.s || p.lat > b.n) continue; const [x, y] = map.toPx(p.lon, p.lat); const dx = x - px, dy = y - py; const d = dx * dx + dy * dy; if (d < bd) { bd = d; best = p; } } return best; }
+  function onTap(x, y) { const p = hit(x, y); if (p) { select(p, false); return; } if (state.scope === 'radius') { const c = map.fromPx(x, y); state.radius.lon = c.lon; state.radius.lat = c.lat; state.radius.set = true; refresh(false); return; } if (state.sel) { state.sel = null; $('card').hidden = true; needDraw = true; } }
+  $('zin').onclick = () => map.zoomBy(1); $('zout').onclick = () => map.zoomBy(-1);
+  $('zfit').onclick = () => fitTo(FILTERED.length ? FILTERED : ROWS);
+  function fitTo(rows) { if (!rows.length) return; let w = 180, e = -180, s = 90, n = -90; for (const p of rows) { if (p.lon < w) w = p.lon; if (p.lon > e) e = p.lon; if (p.lat < s) s = p.lat; if (p.lat > n) n = p.lat; } map.fitBounds({ w, e, s, n }, 50); }
+  map.onMove(() => { if (state.scope === 'view') { computeScope(); renderInsight(); renderList(); } else if (state.sort === 'dist') renderList(); });
+
+  /* ---------- 선택·상세 ---------- */
+  function select(p, pan) {
+    state.sel = p; needDraw = true; if (pan) { map.setView(p.lon, p.lat, Math.max(map.z, 17)); if (isMobile()) { const c = map.fromPx(map.W / 2, map.H * 0.72); map.lat = c.lat; map.moved(); } }
+    const card = $('card'); const f = FAV[p.id]; const near = ROWS.filter((r) => r.sc === p.sc && r !== p && distM(p.lon, p.lat, r.lon, r.lat) <= 300).length;
+    const nearAll = ROWS.filter((r) => r !== p && distM(p.lon, p.lat, r.lon, r.lat) <= 100).length;
+    const nm = p.name + (p.branch ? ' ' + p.branch : '');
+    const kakao = `https://map.kakao.com/link/map/${encodeURIComponent(nm)},${p.lat},${p.lon}`;
+    const road = `https://map.kakao.com/link/roadview/${p.lat},${p.lon}`;
+    const naver = `https://map.naver.com/p/search/${encodeURIComponent(nm + ' ' + (IDX.sgg[state.sgg].name) + ' ' + p.bd)}`;
+    const to = `https://map.kakao.com/link/to/${encodeURIComponent(nm)},${p.lat},${p.lon}`;
+    card.innerHTML = `
+      <button class="fav" id="cardFav" aria-pressed="${f ? 'true' : 'false'}" title="관심 등록">${f ? '★' : '☆'}</button>
+      <button class="x" id="cardX" aria-label="닫기">×</button>
+      <div class="cat"><i class="sw" style="background:${COLORS[p.sl]}"></i>${esc(catLName(p.sl))} › ${esc(IDX.catM[p.sm]?.name || '')} › <b style="color:var(--fg)">${esc(catSName(p.sc))}</b>${p.floor ? ` · ${esc(p.floor)}층` : ''}</div>
+      <h2>${esc(nm)}</h2>
+      <div class="addr"><span>${esc(IDX.sido)} ${esc(IDX.sgg[state.sgg].name)} ${esc(p.road || p.jibun)}</span>${p.road && p.jibun ? `<span class="muted small">지번 ${esc(p.jibun)}${p.bldg ? ' · ' + esc(p.bldg) : ''}</span>` : ''}</div>
+      <div class="links"><a href="#" id="rvBtn" role="button">로드뷰 펼치기</a><a href="${kakao}" target="_blank" rel="noopener">카카오맵</a><a href="${road}" target="_blank" rel="noopener">로드뷰 새창</a><a href="${naver}" target="_blank" rel="noopener">네이버지도</a><a href="${to}" target="_blank" rel="noopener">길찾기</a></div>
+      <div id="rvBox" hidden style="height:230px;border-radius:8px;overflow:hidden;background:var(--panel2)"></div>
+      <div class="near"><span>반경 300m 같은 업종(${esc(catSName(p.sc))}) <b class="num">${fmt(near)}</b>곳</span><span class="muted">반경 100m 안 모든 상가 <b class="num">${fmt(nearAll)}</b>곳 · 등록 기준, 영업 여부는 현장 확인</span></div>
+      <div class="memo">
+        <div class="row"><select id="cardTag" aria-label="상태"><option value="">상태 없음</option>${TAGS.map((t) => `<option ${f && f.tag === t ? 'selected' : ''}>${t}</option>`).join('')}</select><span class="small muted">${f ? '관심 등록됨 · 메모는 자동 저장' : '메모를 쓰면 관심 상가로 저장돼요'}</span></div>
+        <textarea id="cardMemo" placeholder="현장 메모 (예: 코너 자리, 점심 줄 섬, 2층 공실 있음)">${esc(f?.memo || '')}</textarea>
+      </div>`;
+    card.hidden = false;
+    $('cardX').onclick = () => { card.hidden = true; state.sel = null; needDraw = true; };
+    $('rvBtn').onclick = (e) => { e.preventDefault(); const box = $('rvBox'); if (!box.hidden) { box.hidden = true; box.innerHTML = ''; e.target.textContent = '로드뷰 펼치기'; return; } box.hidden = false; e.target.textContent = '로드뷰 접기'; const rv = new kakao.maps.Roadview(box); const rc = new kakao.maps.RoadviewClient(); const pos = new kakao.maps.LatLng(p.lat, p.lon); rc.getNearestPanoId(pos, 80, (id) => { if (id === null) { box.innerHTML = '<div class="note" style="padding:12px">이 자리 80m 안에는 로드뷰가 없습니다.</div>'; return; } rv.setPanoId(id, pos); }); };
+    $('cardFav').onclick = () => { toggleFav(p); select(p, false); };
+    const saveMemo = () => { const memo = $('cardMemo').value, tag = $('cardTag').value; if (!FAV[p.id] && !memo && !tag) return; ensureFav(p); FAV[p.id].memo = memo; FAV[p.id].tag = tag; saveFav(); $('cardFav').setAttribute('aria-pressed', 'true'); $('cardFav').textContent = '★'; renderInsight(); };
+    $('cardMemo').addEventListener('input', debounce(saveMemo, 400)); $('cardTag').addEventListener('change', saveMemo);
+    renderList();
+  }
+  function ensureFav(p) { if (!FAV[p.id]) FAV[p.id] = { id: p.id, name: p.name + (p.branch ? ' ' + p.branch : ''), sc: p.sc, cat: catSName(p.sc), sgg: state.sgg, sggName: IDX.sgg[state.sgg].name, bd: p.bd, addr: p.road || p.jibun, lon: p.lon, lat: p.lat, memo: '', tag: '', ts: Date.now() }; }
+  function toggleFav(p) { if (FAV[p.id]) delete FAV[p.id]; else ensureFav(p); saveFav(); needDraw = true; renderInsight(); renderList(); if (state.tab === 'fav') renderFav(); }
+  function debounce(f, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; }
+  function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 1800); }
+
+  /* ---------- 좌측 UI ---------- */
+  function areaLabel() { const s = IDX.sgg[state.sgg].name; if (!state.dongs.size) return s + ' 전체'; const d = [...state.dongs]; return s + ' ' + (d.length <= 3 ? d.join('·') : d.slice(0, 2).join('·') + ` 외 ${d.length - 2}`); }
+  function buildSggSelect() { const sel = $('selSgg'); const list = Object.entries(IDX.sgg).sort((a, b) => a[0].localeCompare(b[0])); sel.innerHTML = list.map(([c, s]) => `<option value="${c}">${esc(s.name)} (${fmt(s.count)})</option>`).join(''); sel.value = state.sgg; }
+  function buildDongSelect() { const sel = $('selDong'); const bd = IDX.sgg[state.sgg].bdong; sel.innerHTML = `<option value="">동 추가…</option>` + Object.entries(bd).map(([n, d]) => `<option value="${esc(n)}">${esc(n)} (${fmt(d.count)})</option>`).join(''); sel.value = ''; }
+  function renderDongChips() {
+    const el = $('dongChips'); const bd = IDX.sgg[state.sgg].bdong;
+    const sel = [...state.dongs]; const extra = Object.entries(bd).sort((a, b) => b[1].count - a[1].count).map(([n]) => n).filter((n) => !state.dongs.has(n)).slice(0, Math.max(0, 6 - sel.length));
+    el.innerHTML = sel.map((n) => `<button class="chip" aria-pressed="true" data-dong="${esc(n)}">${esc(n)} <b>${fmt(bd[n]?.count || 0)}</b> ×</button>`).join('') + extra.map((n) => `<button class="chip" aria-pressed="false" data-dong="${esc(n)}">${esc(n)} <b>${fmt(bd[n].count)}</b></button>`).join('');
+    el.querySelectorAll('button').forEach((b) => b.onclick = () => { const n = b.dataset.dong; if (state.dongs.has(n)) state.dongs.delete(n); else state.dongs.add(n); onAreaChange(true); });
+  }
+  function renderCats() {
+    const el = $('cats'); const st = stats(AREA);
+    el.innerHTML = CATL_ORDER.map((k) => `<button class="cat" data-cat="${k}" aria-pressed="${state.catL.has(k)}"><i style="background:${COLORS[k]}"></i><span>${esc(catLName(k))}</span><b>${fmt(st.cL.get(k) || 0)}</b></button>`).join('');
+    el.querySelectorAll('button').forEach((b) => b.onclick = () => { const k = b.dataset.cat; if (state.catL.size === CATL_ORDER.length) { state.catL = new Set([k]); } else if (state.catL.has(k)) { state.catL.delete(k); if (!state.catL.size) state.catL = new Set(CATL_ORDER); } else state.catL.add(k); refresh(true); });
+    const sel = $('selCatS'); const arr = [...st.cS.entries()].sort((a, b) => b[1] - a[1]);
+    sel.innerHTML = `<option value="">세부 업종 전체</option>` + arr.map(([sc, n]) => `<option value="${sc}">${esc(catSName(sc))} (${fmt(n)})</option>`).join('');
+    sel.value = state.catS && st.cS.has(state.catS) ? state.catS : ''; if (sel.value !== state.catS) state.catS = sel.value;
+    $('legend').innerHTML = CATL_ORDER.filter((k) => state.catL.has(k) && st.cL.get(k)).map((k) => `<span><i class="sw" style="background:${COLORS[k]}"></i>${esc(catLName(k))}</span>`).join('');
+  }
+  function renderList() {
+    const el = $('list'); const c = map.getCenter(); let rows = SCOPED.slice();
+    if (state.sort === 'dist') rows.sort((a, b) => distM(c.lon, c.lat, a.lon, a.lat) - distM(c.lon, c.lat, b.lon, b.lat));
+    else if (state.sort === 'name') rows.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    else rows.sort((a, b) => a.sc.localeCompare(b.sc) || a.name.localeCompare(b.name, 'ko'));
+    $('listCount').textContent = fmt(rows.length);
+    const lim = state.listLimit; const html = rows.slice(0, lim).map((p) => `<div class="item" role="button" tabindex="0" data-id="${esc(p.id)}" aria-current="${state.sel === p}"><strong><i class="sw" style="background:${COLORS[p.sl]}"></i>${esc(p.name)}${p.branch ? ' <span class="muted small">' + esc(p.branch) + '</span>' : ''}</strong><button class="star" aria-pressed="${!!FAV[p.id]}" data-fav="${esc(p.id)}" title="관심 등록">${FAV[p.id] ? '★' : '☆'}</button><small>${esc(catSName(p.sc))} · ${esc(p.bd)}${p.floor ? ' · ' + esc(p.floor) + '층' : ''}</small><small>${esc(p.road || p.jibun)}</small></div>`).join('');
+    el.innerHTML = html + (rows.length > lim ? `<button class="more" id="moreBtn">${fmt(rows.length - lim)}곳 더 보기</button>` : '') + (!rows.length ? `<div class="note" style="padding:12px">조건에 맞는 상가가 없습니다.</div>` : '');
+    const byId = new Map(rows.slice(0, lim).map((p) => [p.id, p]));
+    el.querySelectorAll('.item').forEach((it) => { const go = () => { const p = byId.get(it.dataset.id); if (p) { select(p, true); if (isMobile()) setMview('center'); } }; it.onclick = (e) => { if (e.target.closest('.star')) return; go(); }; it.onkeydown = (e) => { if (e.key === 'Enter') go(); }; });
+    el.querySelectorAll('.star').forEach((b) => b.onclick = (e) => { e.stopPropagation(); const p = byId.get(b.dataset.fav); if (p) toggleFav(p); });
+    const mb = $('moreBtn'); if (mb) mb.onclick = () => { state.listLimit += 150; renderList(); };
+  }
+
+  /* ---------- 우측 인사이트 ---------- */
+  function donut(svg, parts, total) {
+    const R = 50, r = 32, cx = 60, cy = 60; let a0 = -Math.PI / 2; let html = '';
+    for (const p of parts) { const a1 = a0 + (p.n / total) * Math.PI * 2; const large = a1 - a0 > Math.PI ? 1 : 0; const x0 = cx + R * Math.cos(a0), y0 = cy + R * Math.sin(a0), x1 = cx + R * Math.cos(a1), y1 = cy + R * Math.sin(a1); const xi0 = cx + r * Math.cos(a1), yi0 = cy + r * Math.sin(a1), xi1 = cx + r * Math.cos(a0), yi1 = cy + r * Math.sin(a0); if (p.n === total) html += `<circle cx="${cx}" cy="${cy}" r="${(R + r) / 2}" fill="none" stroke="${p.color}" stroke-width="${R - r}"/>`; else html += `<path d="M${x0},${y0} A${R},${R} 0 ${large} 1 ${x1},${y1} L${xi0},${yi0} A${r},${r} 0 ${large} 0 ${xi1},${yi1} Z" fill="${p.color}" stroke="${COLORS.halo}" stroke-width="1"/>`; a0 = a1; }
+    html += `<text x="${cx}" y="${cy - 4}" text-anchor="middle" font-size="16" font-weight="600" fill="${COLORS.fg}" font-family="JetBrains Mono, monospace">${parts.length}</text><text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="9" fill="${COLORS.muted}">업종 구성</text>`;
+    svg.innerHTML = html;
+  }
+  function renderInsight() {
+    const st = stats(SCOPED);
+    $('kN').textContent = fmt(st.n); $('kS').textContent = fmt(st.cS.size); $('kF').textContent = fmt(st.fav);
+    $('scopeLabel').textContent = areaLabel() + ' · ' + (state.scope === 'all' ? '선택 지역 전체' : state.scope === 'view' ? '현재 화면 범위' : state.radius.set ? `반경 ${state.radius.r >= 1000 ? state.radius.r / 1000 + 'km' : state.radius.r + 'm'}` : '반경: 지도를 눌러 중심을 정하세요') + (state.catS ? ' · ' + catSName(state.catS) : '') + (state.q ? ` · "${state.q}"` : '');
+    const parts = CATL_ORDER.filter((k) => st.cL.get(k)).map((k) => ({ k, n: st.cL.get(k), color: COLORS[k] })).sort((a, b) => b.n - a.n);
+    $('kL').textContent = parts.length + '개 대분류';
+    if (st.n) donut($('donut'), parts, st.n); else $('donut').innerHTML = '';
+    $('donutList').innerHTML = parts.slice(0, 6).map((p) => `<li><i class="sw" style="background:${p.color}"></i><span>${esc(catLName(p.k))}</span><b>${pct(p.n, st.n)}</b></li>`).join('') || '<li class="muted">선택 조건에 상가가 없습니다.</li>';
+    const top = [...st.cS.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6); const mx = top[0]?.[1] || 1;
+    $('topBars').innerHTML = top.map(([sc, n], i) => `<div class="bar"><span class="rk">${String(i + 1).padStart(2, '0')}</span><div class="nm"><span>${esc(catSName(sc))}</span><i style="width:${(100 * n / mx).toFixed(1)}%"></i></div><span class="ct">${fmt(n)}</span></div>`).join('') || '<p class="note">—</p>';
+    const base = ROWS; const L = lq(SCOPED, base, 4).filter((x) => x.lq >= 1.3).sort((a, b) => b.lq - a.lq).slice(0, 5);
+    $('lqBase').textContent = `${IDX.sgg[state.sgg].name} 평균 대비`;
+    $('lqBars').innerHTML = L.map((x, i) => `<div class="bar"><span class="rk">${String(i + 1).padStart(2, '0')}</span><div class="nm"><span>${esc(catSName(x.sc))} <span class="muted small">${fmt(x.n)}곳</span></span><i class="alt" style="width:${Math.min(100, x.lq * 25).toFixed(1)}%"></i></div><span class="ct">×${x.lq.toFixed(1)}</span></div>`).join('') || '<p class="note">시군구 평균과 비슷한 구성이거나, 범위가 좁아 비교할 업종이 없습니다.</p>';
+  }
+
+  /* ---------- 분석 탭 ---------- */
+  function hbar(label, n, mx, extra, cls) { return `<div class="bar"><span class="rk"></span><div class="nm"><span>${esc(label)}${extra ? ` <span class="muted small">${extra}</span>` : ''}</span><i class="${cls || ''}" style="width:${(100 * n / (mx || 1)).toFixed(1)}%"></i></div><span class="ct">${fmt(n)}</span></div>`; }
+  function renderAnalysis() {
+    const el = $('analysisInner'); const st = stats(SCOPED); const sggName = IDX.sgg[state.sgg].name; const bd = IDX.sgg[state.sgg].bdong;
+    const top = [...st.cS.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12); const mx = top[0]?.[1] || 1;
+    // 동별 비교 (지역 조건 제외, 업종·검색 조건 적용)
+    const q = state.q.trim().toLowerCase(); const dongCount = new Map();
+    for (const r of ROWS) { if (!state.catL.has(r.sl) || (state.catS && r.sc !== state.catS) || (q && !r.q.includes(q))) continue; dongCount.set(r.bd, (dongCount.get(r.bd) || 0) + 1); }
+    const dongs = [...dongCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14); const dmx = dongs[0]?.[1] || 1;
+    const L = lq(SCOPED, ROWS, 5).sort((a, b) => b.lq - a.lq);
+    const names = Object.keys(bd); if (!state.cmpA) state.cmpA = [...state.dongs][0] || names[0]; if (!state.cmpB) state.cmpB = names.find((n) => n !== state.cmpA && bd[n].count > 100) || names[1] || names[0];
+    const cmp = (name) => { const rows = ROWS.filter((r) => r.bd === name); const s = stats(rows); const parts = CATL_ORDER.filter((k) => s.cL.get(k)).map((k) => ({ k, n: s.cL.get(k) })).sort((a, b) => b.n - a.n); const t5 = [...s.cS.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5); return { rows, s, parts, t5 }; };
+    const A = cmp(state.cmpA), B = cmp(state.cmpB);
+    const catsBlock = state.catS ? (() => { const per = new Map(); for (const r of ROWS) if (r.sc === state.catS) per.set(r.bd, (per.get(r.bd) || 0) + 1); const arr = [...per.entries()].map(([n, c]) => ({ n, c, share: c / bd[n].count })).sort((a, b) => b.c - a.c).slice(0, 12); const m = arr[0]?.c || 1; return `<div class="box"><h3>'${esc(catSName(state.catS))}'이(가) 많은 동 <small>${esc(sggName)} 안에서</small></h3><div class="bars">${arr.map((x) => hbar(x.n, x.c, m, `동 전체의 ${pct(x.c, bd[x.n].count)}`)).join('')}</div></div>`; })() : '';
+    el.innerHTML = `
+      <header class="dh"><div class="eyebrow">A closer look</div><h2>${esc(areaLabel())}의 상권 구성</h2><div class="sub">${esc($('scopeLabel').textContent)} · 자료 기준 2026.06 · 등록 상가 <b class="num">${fmt(st.n)}</b>곳</div></header>
+      <div class="grid2">
+        <div class="box"><h3>세부 업종 분포 <small>상위 12</small></h3><div class="bars">${top.map(([sc, n]) => hbar(catSName(sc), n, mx, pct(n, st.n))).join('') || '<p class="note">—</p>'}</div></div>
+        <div class="box"><h3>동별 상가 수 비교 <small>${esc(sggName)} · 업종·검색 조건 적용</small></h3><div class="bars">${dongs.map(([n, c]) => hbar(n, c, dmx, state.dongs.has(n) ? '선택' : '', state.dongs.size && !state.dongs.has(n) ? 'alt' : '')).join('')}</div></div>
+        ${catsBlock}
+        <div class="box" style="grid-column:1/-1"><h3>특화 업종 지수 <small>이 지역 비중 ÷ ${esc(sggName)} 전체 비중 · 5곳 이상 업종</small></h3>
+          <div class="twrap"><table class="t"><thead><tr><th>세부 업종</th><th class="n">이 지역</th><th class="n">비중</th><th class="n">${esc(sggName)} 비중</th><th class="n">특화 지수</th></tr></thead><tbody>
+          ${L.slice(0, 10).map((x) => `<tr><td>${esc(catSName(x.sc))}</td><td class="n">${fmt(x.n)}</td><td class="n">${pct(x.share, 1)}</td><td class="n">${pct(x.baseShare, 1)}</td><td class="n"><span class="lq ${x.lq >= 1.3 ? 'hi' : ''}">×${x.lq.toFixed(2)}</span></td></tr>`).join('')}
+          ${L.length > 10 ? `<tr><td colspan="5" class="muted small">… 지수가 낮은 쪽(평균보다 적은 업종)은 창업 아이템 탭에서 봅니다.</td></tr>` : ''}
+          </tbody></table></div></div>
+        <div class="box" style="grid-column:1/-1"><h3>동 vs 동 비교</h3>
+          <div class="ctrlrow"><select id="cmpA">${names.map((n) => `<option ${n === state.cmpA ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select><span class="muted">vs</span><select id="cmpB">${names.map((n) => `<option ${n === state.cmpB ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+          <div class="grid2">${[A, B].map((X, i) => `<div><div style="display:flex;justify-content:space-between;align-items:baseline"><b>${esc(i ? state.cmpB : state.cmpA)}</b><span class="num muted">${fmt(X.s.n)}곳 · ${X.s.cS.size}개 업종</span></div><div class="stack" style="margin:6px 0">${X.parts.map((p) => `<i style="width:${(100 * p.n / X.s.n).toFixed(2)}%;background:${COLORS[p.k]}" title="${esc(catLName(p.k))} ${pct(p.n, X.s.n)}"></i>`).join('')}</div><ul style="list-style:none;margin:0;padding:0;display:grid;gap:3px;font-size:12px">${X.parts.slice(0, 5).map((p) => `<li style="display:flex;gap:6px;align-items:center"><i class="sw" style="background:${COLORS[p.k]}"></i><span style="flex:1">${esc(catLName(p.k))}</span><b class="num" style="font-weight:400">${pct(p.n, X.s.n)}</b></li>`).join('')}</ul><div class="bars" style="margin-top:8px">${X.t5.map(([sc, n]) => hbar(catSName(sc), n, X.t5[0][1], pct(n, X.s.n))).join('')}</div></div>`).join('')}</div>
+        </div>
+      </div>
+      <p class="note">이 자료에는 매출·임대료·유동인구·개폐업 시점이 없습니다. 상가 구성과 위치를 비교하는 기초 자료로 쓰고, 인허가·인구·실거래 자료를 붙이면 각 탭이 켜집니다.</p>`;
+    $('cmpA').onchange = (e) => { state.cmpA = e.target.value; renderAnalysis(); }; $('cmpB').onchange = (e) => { state.cmpB = e.target.value; renderAnalysis(); };
+  }
+
+  /* ---------- 창업 아이템 탭 ---------- */
+  function renderStartup() {
+    const el = $('startupInner'); const sggName = IDX.sgg[state.sgg].name; const bd = IDX.sgg[state.sgg].bdong;
+    const area = AREA, base = ROWS; const sa = stats(area), sb = stats(base);
+    // 기대치 대비 실제: 시군구 비중 × 지역 상가 수
+    const LIFE = new Set(['I2', 'G2', 'S2', 'P1', 'R1', 'Q1']);
+    const rowsX = []; for (const [sc, bn] of sb.cS) { if (bn < 25) continue; if (state.startupLife && !LIFE.has(IDX.catM[IDX.catS[sc]?.M]?.L)) continue; const exp = sa.n * bn / sb.n; const act = sa.cS.get(sc) || 0; rowsX.push({ sc, exp, act, ratio: act / (exp || 1), bn }); }
+    const gaps = rowsX.filter((x) => x.exp >= 3 && x.ratio <= 0.5).sort((a, b) => (a.ratio - b.ratio) || (b.exp - a.exp)).slice(0, 12);
+    const sat = rowsX.filter((x) => x.act >= 5 && x.ratio >= 1.5).sort((a, b) => b.ratio - a.ratio).slice(0, 10);
+    const scList = [...sb.cS.entries()].sort((a, b) => b[1] - a[1]);
+    if (!state.startupCat) state.startupCat = state.catS || scList[0]?.[0] || '';
+    const sc = state.startupCat; const per = new Map(); for (const r of base) if (r.sc === sc) per.set(r.bd, (per.get(r.bd) || 0) + 1);
+    const dongRank = Object.entries(bd).filter(([n, d]) => d.count >= 150).map(([n, d]) => ({ n, total: d.count, c: per.get(n) || 0, share: (per.get(n) || 0) / d.count })).sort((a, b) => a.share - b.share);
+    const avgShare = (sb.cS.get(sc) || 0) / sb.n; const mxShare = Math.max(...dongRank.map((d) => d.share), avgShare, 0.0001);
+    el.innerHTML = `
+      <header class="dh"><div class="eyebrow">Opportunity scan</div><h2>${esc(areaLabel())}에서 눈여겨볼 업종</h2><div class="sub">${esc(sggName)} 전체의 업종 비율을 기준으로, 이 지역에 비어 있거나 몰려 있는 업종을 찾습니다. 상가 수 기준이라 "수요"가 아니라 "공급의 빈 자리"를 보여줍니다.</div>
+        <div class="ctrlrow" style="margin-top:4px"><label class="chip" style="cursor:pointer"><input type="checkbox" id="startupLife" ${state.startupLife ? 'checked' : ''} style="width:auto;height:auto;margin:0"> 생활 밀착 업종만 (음식·소매·개인서비스·교육·스포츠·의료)</label></div></header>
+      <div class="grid2">
+        <div class="box"><h3>비어 있는 업종 <small>${esc(sggName)} 평균이면 있을 법한데 적은 업종</small></h3>
+          <div class="twrap"><table class="t"><thead><tr><th>세부 업종</th><th class="n">기대</th><th class="n">실제</th><th class="n">비율</th></tr></thead><tbody>
+          ${gaps.map((x) => `<tr><td>${esc(catSName(x.sc))}</td><td class="n">${x.exp.toFixed(1)}</td><td class="n">${fmt(x.act)}</td><td class="n"><span class="lq lo">${(x.ratio * 100).toFixed(0)}%</span></td></tr>`).join('') || '<tr><td colspan="4" class="muted">눈에 띄는 공백이 없습니다.</td></tr>'}
+          </tbody></table></div><p class="note">기대 = ${esc(sggName)} 전체에서 그 업종이 차지하는 비율 × 이 지역 상가 수. 비율이 낮을수록 평균 대비 드문 업종입니다. 수요가 없어서 비어 있을 수도 있으니 유동인구·인구 자료와 현장 확인이 필요합니다.</p></div>
+        <div class="box"><h3>몰려 있는 업종 <small>평균의 1.5배 이상</small></h3>
+          <div class="twrap"><table class="t"><thead><tr><th>세부 업종</th><th class="n">기대</th><th class="n">실제</th><th class="n">비율</th></tr></thead><tbody>
+          ${sat.map((x) => `<tr><td>${esc(catSName(x.sc))}</td><td class="n">${x.exp.toFixed(1)}</td><td class="n">${fmt(x.act)}</td><td class="n"><span class="lq hi">${(x.ratio * 100).toFixed(0)}%</span></td></tr>`).join('') || '<tr><td colspan="4" class="muted">평균과 비슷한 구성입니다.</td></tr>'}
+          </tbody></table></div><p class="note">같은 업종이 모여 있으면 경쟁이 세지만, 먹자골목·학원가처럼 집적 효과가 있는 상권일 수도 있습니다.</p></div>
+        <div class="box" style="grid-column:1/-1"><h3>업종을 정하고 동 고르기 <small>${esc(sggName)} 안에서 이 업종 비율이 낮은 동부터</small></h3>
+          <div class="ctrlrow"><select id="startupCat">${scList.map(([c, n]) => `<option value="${c}" ${c === sc ? 'selected' : ''}>${esc(catSName(c))} (${fmt(n)})</option>`).join('')}</select><span class="note">상가 150곳 이상인 동만 비교 · ${esc(sggName)} 평균 ${(avgShare * 100).toFixed(2)}%</span></div>
+          <div class="bars">${dongRank.map((d) => `<div class="bar"><span class="rk"></span><div class="nm"><span>${esc(d.n)} <span class="muted small">${fmt(d.c)}곳 / 상가 ${fmt(d.total)}곳</span></span><i class="${d.share < avgShare ? 'alt' : ''}" style="width:${(100 * d.share / mxShare).toFixed(1)}%"></i></div><span class="ct">${(d.share * 100).toFixed(2)}%</span></div>`).join('')}</div>
+          <p class="note">회색 막대는 평균보다 적은 동, 초록은 평균 이상인 동입니다. 인구·유동인구 자료가 들어오면 '인구 1,000명당 가게 수'로 바꿔 더 정확히 볼 수 있습니다.</p></div>
+      </div>
+      <div class="callout"><b>판단 순서 제안</b>① 비어 있는 업종에서 후보를 고르고 → ② 동별 비율로 자리 후보를 좁힌 뒤 → ③ 지도에서 반경 500m 경쟁 가게를 세고 → ④ 로드뷰·현장에서 공실과 유동을 확인. 관심 상가에 메모로 남기면 됩니다.</div>`;
+    $('startupCat').onchange = (e) => { state.startupCat = e.target.value; renderStartup(); };
+    $('startupLife').onchange = (e) => { state.startupLife = e.target.checked; renderStartup(); };
+  }
+
+  /* ---------- 자료 대기 탭 ---------- */
+  function renderEstate() {
+    const agents = AREA.filter((r) => r.sl === 'L1'); const c = map.getCenter();
+    $('estateInner').innerHTML = `
+      <header class="dh"><div class="eyebrow">Real estate</div><h2>${esc(areaLabel())} 부동산</h2><div class="sub">실거래가·임대료 자료를 붙이면 동별 시세 추이와 상가 매매·임대 비교가 여기에 표시됩니다.</div></header>
+      <div class="grid2">
+        <div class="empty"><b>준비되면 보여줄 것</b><ol><li>아파트·상업업무용 실거래가: 동별 ㎡당 가격, 최근 2년 추이, 거래량</li><li>상가(집합건물) 매매: 층·면적별 단가, 같은 건물 거래 이력</li><li>임대료·공실률(한국부동산원 상업용부동산 임대동향, 구 단위)</li><li>지도에서 가게를 누르면 그 건물·근처 실거래 표시</li></ol>
+          <b>필요한 파일</b><ol><li>국토교통부 실거래가 공개시스템(rt.molit.go.kr) → 아파트 / 상업업무용 → 광주 남구 → CSV 다운로드 (기간 2년)</li><li>한국부동산원 R-ONE → 상업용부동산 임대동향 → 광주 → 엑셀</li></ol><span>파일을 올려주면 이 탭을 켭니다.</span></div>
+        <div class="box"><h3>매물 볼 때 지금 쓸 수 있는 것</h3>
+          <p class="small">① 지도에서 매물 자리 근처를 반경 분석(300m)으로 찍어 업종 구성과 가게 수를 본다 → ② 같은 자리의 로드뷰로 공실·간판 상태를 확인 → ③ 관심 상가에 '후보' 태그로 메모. 실거래가 자료가 들어오면 같은 자리의 거래 이력이 여기에 붙습니다.</p></div>
+      </div>`;
+  }
+  function renderPeople() {
+    $('peopleInner').innerHTML = `
+      <header class="dh"><div class="eyebrow">People</div><h2>${esc(areaLabel())} 인구·유동</h2><div class="sub">주민등록 인구와 유동인구 자료를 붙이면 '인구 1,000명당 가게 수', 연령 구성, 시간대별 유동이 여기에 표시되고 창업 아이템 탭의 밀도 계산에도 쓰입니다.</div></header>
+      <div class="grid2">
+        <div class="empty"><b>준비되면 보여줄 것</b><ol><li>동별 인구·세대·연령 구성(주민등록, 매월)</li><li>100m 격자 거주 인구 지도(SGIS)</li><li>유동인구: 시간대·요일·연령대별, 지점별</li><li>업종별 인구 1,000명당 가게 수 → 동 비교</li></ol>
+          <b>필요한 파일</b><ol><li>행정안전부 주민등록 인구통계(jumin.mois.go.kr) → 광주 남구 → 행정동별 연령별 → CSV</li><li>SGIS(sgis.kostat.go.kr) 격자 인구 → 광주 → CSV/SHP</li><li>유동인구: 공공데이터포털에서 '광주 유동인구' 검색(통신사 제공 자료) 또는 소상공인 상권정보 유동인구 → CSV</li></ol><span>파일을 올려주면 이 탭을 켭니다.</span></div>
+        <div class="box"><h3>지금 볼 수 있는 것</h3><p class="small">가게 밀도 자체가 유동의 간접 지표입니다. 지도에서 '주변 흐리게'를 켜고 축소하면 점이 짙은 띠가 큰길·역세권·학원가입니다. 반경 분석으로 500m 안 음식점·카페 수를 비교해 보세요.</p></div>
+      </div>`;
+  }
+  function renderLicense() {
+    $('licenseInner').innerHTML = `
+      <header class="dh"><div class="eyebrow">Openings &amp; closures</div><h2>${esc(areaLabel())} 개·폐업</h2><div class="sub">인허가 자료를 붙이면 업종별 최근 1년 개업·폐업 수, 폐업률, 평균 영업 연차, 가게별 영업 상태가 여기와 가게 상세에 표시됩니다.</div></header>
+      <div class="grid2">
+        <div class="empty"><b>준비되면 보여줄 것</b><ol><li>동·업종별 최근 1년 개업 수 / 폐업 수 / 폐업률</li><li>평균 영업 연차, 3년 생존율</li><li>가게 상세에 '영업 중 / 폐업(날짜)' 표시, 폐업 자리(공실 후보) 지도</li><li>창업 아이템 탭에 '폐업이 잦은 업종' 경고</li></ol>
+          <b>필요한 파일</b><ol><li>지방행정인허가데이터(localdata.go.kr) → 지역별 데이터 → 광주광역시 → 업종 선택(일반음식점, 휴게음식점, 미용업, 학원 등) → CSV</li><li>부동산·소매처럼 인허가가 없는 업종은 상가 자료 기준으로만 표시됩니다.</li></ol><span>파일을 올려주면 이 탭을 켭니다.</span></div>
+      </div>`;
+  }
+
+  /* ---------- 관심 상가 탭 ---------- */
+  function renderFav() {
+    const el = $('favInner'); const all = Object.values(FAV).sort((a, b) => b.ts - a.ts); const list = state.favTag === 'all' ? all : all.filter((f) => (f.tag || '') === state.favTag);
+    const tags = ['all', ...TAGS, ''];
+    el.innerHTML = `
+      <header class="dh"><div class="eyebrow">My places</div><h2>관심 있는 가게, 한곳에</h2><div class="sub">직접 모은 가게와 현장 기록. 이 브라우저에 저장되며, 아래 내보내기로 다른 기기에 옮길 수 있습니다.</div></header>
+      <div class="ctrlrow"><div class="chips">${tags.map((t) => `<button class="chip" data-tag="${t}" aria-pressed="${state.favTag === t}">${t === 'all' ? `전체 <b>${all.length}</b>` : t === '' ? `상태 없음 <b>${all.filter((f) => !f.tag).length}</b>` : `${t} <b>${all.filter((f) => f.tag === t).length}</b>`}</button>`).join('')}</div></div>
+      <div class="box"><div id="favList">${list.map((f) => `<div class="favitem" data-id="${esc(f.id)}"><div class="nm"><span>${esc(f.name)}</span>${f.tag ? `<span class="tag">${esc(f.tag)}</span>` : ''}<span class="muted small" style="font-weight:400">${esc(f.cat)} · ${esc(f.sggName)} ${esc(f.bd)}</span></div><div class="ops"><select data-tag="${esc(f.id)}" aria-label="상태"><option value="">상태 없음</option>${TAGS.map((t) => `<option ${f.tag === t ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn sm" data-go="${esc(f.id)}">지도</button><button class="btn sm" data-del="${esc(f.id)}">삭제</button></div><div class="muted small" style="grid-column:1/-1">${esc(f.addr)} · <a href="https://map.kakao.com/link/map/${encodeURIComponent(f.name)},${f.lat},${f.lon}" target="_blank" rel="noopener">카카오맵</a> · <a href="https://map.kakao.com/link/roadview/${f.lat},${f.lon}" target="_blank" rel="noopener">로드뷰</a></div><textarea data-memo="${esc(f.id)}" placeholder="메모">${esc(f.memo || '')}</textarea></div>`).join('') || '<p class="note">아직 저장한 가게가 없습니다. 지도에서 가게를 누르고 ☆를 누르거나 메모를 쓰면 저장됩니다.</p>'}</div></div>
+      <div class="grid2">
+        <div class="box"><h3>내보내기 <small>다른 기기로 옮기기 / 백업</small></h3><div class="ctrlrow"><button class="btn" id="expJson">전체 복사 (JSON)</button><button class="btn" id="expCsv">표 복사 (CSV)</button></div><textarea id="expBox" rows="4" readonly placeholder="버튼을 누르면 여기에 내용이 나오고 클립보드에 복사됩니다."></textarea></div>
+        <div class="box"><h3>가져오기 <small>다른 기기에서 복사한 JSON</small></h3><textarea id="impBox" rows="4" placeholder="JSON을 붙여 넣고 가져오기를 누르세요. 같은 가게는 메모가 합쳐집니다."></textarea><div class="ctrlrow"><button class="btn primary" id="impBtn">가져오기</button></div></div>
+      </div>`;
+    el.querySelectorAll('.chip').forEach((b) => b.onclick = () => { state.favTag = b.dataset.tag; renderFav(); });
+    el.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { delete FAV[b.dataset.del]; saveFav(); renderFav(); renderInsight(); needDraw = true; });
+    el.querySelectorAll('[data-go]').forEach((b) => b.onclick = async () => { const f = FAV[b.dataset.go]; if (!f) return; if (f.sgg !== state.sgg) { state.sgg = f.sgg; $('selSgg').value = f.sgg; state.dongs = new Set([f.bd]); await onSggChange(false); } setTab('map'); const p = ROWS.find((r) => r.id === f.id); if (p) select(p, true); else map.setView(f.lon, f.lat, 17); if (isMobile()) setMview('center'); });
+    el.querySelectorAll('[data-tag]').forEach((s) => { if (s.tagName !== 'SELECT') return; s.onchange = () => { FAV[s.dataset.tag].tag = s.value; saveFav(); renderFav(); }; });
+    el.querySelectorAll('[data-memo]').forEach((t) => t.addEventListener('input', debounce(() => { FAV[t.dataset.memo].memo = t.value; saveFav(); }, 400)));
+    const copy = (txt) => { $('expBox').value = txt; navigator.clipboard?.writeText(txt).then(() => toast('복사했습니다')).catch(() => { $('expBox').select(); toast('텍스트를 직접 복사하세요'); }); };
+    $('expJson').onclick = () => copy(JSON.stringify(Object.values(FAV)));
+    $('expCsv').onclick = () => copy(['상호,업종,시군구,법정동,주소,상태,메모,경도,위도'].concat(Object.values(FAV).map((f) => [f.name, f.cat, f.sggName, f.bd, f.addr, f.tag || '', (f.memo || '').replace(/[\r\n]+/g, ' '), f.lon, f.lat].map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(','))).join('\n'));
+    $('impBtn').onclick = () => { try { const arr = JSON.parse($('impBox').value); let n = 0; for (const f of arr) { if (!f || !f.id) continue; if (FAV[f.id]) { if (f.memo && !FAV[f.id].memo.includes(f.memo)) FAV[f.id].memo = (FAV[f.id].memo ? FAV[f.id].memo + '\n' : '') + f.memo; if (f.tag) FAV[f.id].tag = f.tag; } else FAV[f.id] = f; n++; } saveFav(); renderFav(); renderInsight(); needDraw = true; toast(`${n}곳 가져왔습니다`); } catch (e) { toast('JSON 형식이 아닙니다'); } };
+  }
+
+  /* ---------- 탭·모바일 ---------- */
+  const isMobile = () => window.innerWidth <= 900;
+  function setTab(tab) {
+    state.tab = tab; document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === tab)); document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab));
+    try { if (location.hash !== '#' + tab) history.replaceState(null, '', '#' + tab); } catch (e) { }
+    $('mvCenter').textContent = tab === 'map' ? '지도' : document.querySelector(`#tabs button[data-tab="${tab}"]`).textContent.replace(/\d+/g, '').trim();
+    renderTab(); if (tab === 'map') { resize(); needDraw = true; }
+  }
+  function renderTab() { if (!IDX) return; if (state.tab === 'analysis') renderAnalysis(); else if (state.tab === 'startup') renderStartup(); else if (state.tab === 'estate') renderEstate(); else if (state.tab === 'people') renderPeople(); else if (state.tab === 'license') renderLicense(); else if (state.tab === 'fav') renderFav(); }
+  function setMview(v) { $('layout').dataset.mview = v; document.querySelectorAll('#mobilebar button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mview === v)); if (v === 'center' && state.tab === 'map') { resize(); needDraw = true; } }
+  document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => { setTab(b.dataset.tab); if (isMobile()) setMview('center'); });
+  document.querySelectorAll('#mobilebar button').forEach((b) => b.onclick = () => setMview(b.dataset.mview));
+  window.addEventListener('hashchange', () => { const h = location.hash.replace('#', ''); if (h && h !== state.tab && $('view-' + h)) setTab(h); });
+
+  /* ---------- 이벤트 ---------- */
+  function refresh(rebuildCats) { computeFilters(); if (rebuildCats) renderCats(); state.listLimit = 120; renderList(); renderInsight(); needDraw = true; renderTab(); }
+  async function onSggChange(fit) { ROWS = await loadSgg(state.sgg); buildDongSelect(); state.cmpA = ''; state.cmpB = ''; state.startupCat = ''; state.radius.set = false; renderDongChips(); refresh(true); if (fit) fitTo(FILTERED.length ? FILTERED : ROWS); }
+  function onAreaChange(fit) { renderDongChips(); state.radius.set = false; state.cmpA = ''; refresh(true); if (fit) fitTo(FILTERED.length ? FILTERED : AREA); }
+  $('selSgg').onchange = async (e) => { state.sgg = e.target.value; state.dongs = new Set(); state.sel = null; $('card').hidden = true; await onSggChange(true); };
+  $('selDong').onchange = (e) => { if (e.target.value) { state.dongs.add(e.target.value); onAreaChange(true); } e.target.value = ''; };
+  $('dongAll').onclick = () => { state.dongs = new Set(); onAreaChange(true); };
+  $('catAll').onclick = () => { state.catL = new Set(CATL_ORDER); state.catS = ''; refresh(true); };
+  $('selCatS').onchange = (e) => { state.catS = e.target.value; refresh(false); renderCats(); };
+  $('q').addEventListener('input', debounce((e) => { state.q = e.target.value; refresh(false); }, 250));
+  $('sort').onchange = (e) => { state.sort = e.target.value; renderList(); };
+  document.querySelectorAll('#scopeSeg button').forEach((b) => b.onclick = () => { state.scope = b.dataset.scope; document.querySelectorAll('#scopeSeg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); $('radiusBox').hidden = state.scope !== 'radius'; if (state.scope === 'radius' && !state.radius.set) { const c = map.getCenter(); state.radius.lon = c.lon; state.radius.lat = c.lat; state.radius.set = true; toast('지도를 누르면 중심이 옮겨집니다'); } refresh(false); });
+  $('radiusSel').onchange = (e) => { state.radius.r = +e.target.value; refresh(false); };
+  $('radiusCenter').onclick = () => { const c = map.getCenter(); state.radius.lon = c.lon; state.radius.lat = c.lat; state.radius.set = true; refresh(false); };
+  $('toggleLabels').onclick = (e) => { state.labels = !state.labels; e.currentTarget.setAttribute('aria-pressed', state.labels); needDraw = true; };
+  $('toggleCtx').onclick = (e) => { state.ctx = !state.ctx; e.currentTarget.setAttribute('aria-pressed', state.ctx); needDraw = true; };
+  $('guideBtn').onclick = () => { $('guide').hidden = false; }; $('guideClose').onclick = () => { $('guide').hidden = true; }; $('guide').onclick = (e) => { if (e.target === $('guide')) $('guide').hidden = true; };
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); needDraw = true; renderCats(); renderInsight(); });
+  new MutationObserver(() => { readColors(); needDraw = true; renderCats(); renderInsight(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  /* ---------- 시작 ---------- */
+  (async function start() {
+    try {
+      readColors(); resize(); saveFav();
+      await loadKakao(); initKakao();
+      IDX = await fetchBin('data/index.json');
+      $('engineNote').textContent = `상가 ${fmt(IDX.total)}곳 · ${IDX.asof}`;
+      buildSggSelect();
+      ROWS = await loadSgg(state.sgg); buildDongSelect(); renderDongChips();
+      computeFilters(); renderCats();
+      map.ready = true; fitTo(FILTERED.length ? FILTERED : ROWS); loop();
+      renderList(); renderInsight();
+      const h = location.hash.replace('#', ''); if (h && $('view-' + h)) setTab(h); else renderTab();
+      if (isMobile()) setMview('center');
+    } catch (e) { $('loading').innerHTML = `<div><b>자료를 불러오지 못했습니다</b>${esc(e.message)}</div>`; $('loading').hidden = false; console.error(e); }
+  })();
+})();
+</script>
+
+</body>
+</html>
