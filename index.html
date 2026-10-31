@@ -606,7 +606,7 @@ table.t tr:last-child td { border-bottom: 0; }
     const card = $('card'); const f = FAV[p.id]; const near = ROWS.filter((r) => r.sc === p.sc && r !== p && distM(p.lon, p.lat, r.lon, r.lat) <= 300).length;
     const nearAll = ROWS.filter((r) => r !== p && distM(p.lon, p.lat, r.lon, r.lat) <= 100).length;
     const nm = p.name + (p.branch ? ' ' + p.branch : '');
-    const kakao = `https://map.kakao.com/link/map/${encodeURIComponent(nm)},${p.lat},${p.lon}`;
+    const kakaoUrl = `https://map.kakao.com/link/map/${encodeURIComponent(nm)},${p.lat},${p.lon}`;
     const road = `https://map.kakao.com/link/roadview/${p.lat},${p.lon}`;
     const naver = `https://map.naver.com/p/search/${encodeURIComponent(nm + ' ' + (IDX.sgg[state.sgg].name) + ' ' + p.bd)}`;
     const to = `https://map.kakao.com/link/to/${encodeURIComponent(nm)},${p.lat},${p.lon}`;
@@ -616,7 +616,7 @@ table.t tr:last-child td { border-bottom: 0; }
       <div class="cat"><i class="sw" style="background:${COLORS[p.sl]}"></i>${esc(catLName(p.sl))} › ${esc(IDX.catM[p.sm]?.name || '')} › <b style="color:var(--fg)">${esc(catSName(p.sc))}</b>${p.floor ? ` · ${esc(p.floor)}층` : ''}</div>
       <h2>${esc(nm)}</h2>
       <div class="addr"><span>${esc(IDX.sido)} ${esc(IDX.sgg[state.sgg].name)} ${esc(p.road || p.jibun)}</span>${p.road && p.jibun ? `<span class="muted small">지번 ${esc(p.jibun)}${p.bldg ? ' · ' + esc(p.bldg) : ''}</span>` : ''}</div>
-      <div class="links"><a href="#" id="rvBtn" role="button">로드뷰 펼치기</a><a href="${kakao}" target="_blank" rel="noopener">카카오맵</a><a href="${road}" target="_blank" rel="noopener">로드뷰 새창</a><a href="${naver}" target="_blank" rel="noopener">네이버지도</a><a href="${to}" target="_blank" rel="noopener">길찾기</a></div>
+      <div class="links"><a href="#" id="rvBtn" role="button">로드뷰 펼치기</a><a href="${kakaoUrl}" target="_blank" rel="noopener">카카오맵</a><a href="${road}" target="_blank" rel="noopener">로드뷰 새창</a><a href="${naver}" target="_blank" rel="noopener">네이버지도</a><a href="${to}" target="_blank" rel="noopener">길찾기</a></div>
       <div id="rvBox" hidden style="height:230px;border-radius:8px;overflow:hidden;background:var(--panel2)"></div>
       <div class="near"><span>반경 300m 같은 업종(${esc(catSName(p.sc))}) <b class="num">${fmt(near)}</b>곳</span><span class="muted">반경 100m 안 모든 상가 <b class="num">${fmt(nearAll)}</b>곳 · 등록 기준, 영업 여부는 현장 확인</span></div>
       <div class="memo">
