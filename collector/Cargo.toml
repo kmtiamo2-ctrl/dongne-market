@@ -1,0 +1,16 @@
+[package]
+name = "rt-collect"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "국토교통부 실거래가 공개 API를 모아 사이트용 JSON으로 저장하는 수집기"
+
+[dependencies]
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+quick-xml = "0.42"
+serde_json = "1"
+
+[profile.release]
+opt-level = 2
+strip = true
+overflow-checks = true

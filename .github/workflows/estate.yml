@@ -1,0 +1,51 @@
+# 국토교통부 실거래가를 모아 data/estate/ 에 저장한다.
+# 인증키는 저장소 Secrets(DATA_GO_KR_KEY)에서만 읽고, 수집 단계에만 전달한다.
+name: 실거래가 수집
+
+on:
+  schedule:
+    - cron: "17 19 3 * *" # 매월 4일 04:17 (한국 시간)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "collector/**"
+      - ".github/workflows/estate.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: estate-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 수집기 테스트와 빌드
+        working-directory: collector
+        run: |
+          cargo test --locked
+          cargo build --release --locked
+
+      - name: 실거래가 수집
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+        run: ./collector/target/release/rt-collect data/estate
+
+      - name: 바뀐 자료 올리기
+        run: |
+          git add data/estate
+          if git diff --cached --quiet; then
+            echo "바뀐 자료가 없습니다"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "실거래가 자료 갱신 $(TZ=Asia/Seoul date +%Y-%m-%d)"
+          git pull --rebase origin main
+          git push origin HEAD:main
