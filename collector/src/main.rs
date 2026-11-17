@@ -370,6 +370,8 @@ struct EndpointState {
     verified: bool,
     /// 모든 판이 인증에서 막혔는가
     dead: bool,
+    /// 응답 항목 이름을 이미 기록했는가
+    logged: bool,
 }
 
 fn collect_kind(cx: &mut Ctx, kind: &Kind, region: &Region, months: &[String], ep: &mut EndpointState) -> KindOut {
@@ -380,7 +382,6 @@ fn collect_kind(cx: &mut Ctx, kind: &Kind, region: &Region, months: &[String], e
         return out;
     }
     let mut pref = 0usize;
-    let mut tags_logged = false;
     'months: for (mi, ym) in months.iter().enumerate() {
         let mut order: Vec<usize> = vec![pref];
         order.extend((0..region.lawd.len()).filter(|i| *i != pref));
@@ -428,11 +429,11 @@ fn collect_kind(cx: &mut Ctx, kind: &Kind, region: &Region, months: &[String], e
         }
         match got {
             Some(items) => {
-                if !tags_logged && !items.is_empty() {
+                if !ep.logged && !items.is_empty() {
                     let mut tags: Vec<&str> = items[0].keys().map(String::as_str).collect();
                     tags.sort_unstable();
                     cx.log(&format!("  {} 응답 항목: {}", kind.label, tags.join(",")));
-                    tags_logged = true;
+                    ep.logged = true;
                 }
                 let before = out.rows.len();
                 out.rows.extend(items.iter().filter_map(|it| to_row(kind.id, ym, it)));
